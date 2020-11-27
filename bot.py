@@ -5,8 +5,13 @@ import os
 import random
 import discord
 from dotenv import load_dotenv
+from datetime import datetime, date
+import pytz
 
 import joke_api
+import quotes_api
+import check_ping
+import weather_api
 
 #1
 from discord.ext import commands
@@ -92,11 +97,13 @@ async def on_message_delete(message):
 
 
 #commands for guild
+##### Default welcome command ####
 @bot.command(aliases=['hello','hi','namaste','hey'], help='Welcomes you to the server')
 async def say_hello(ctx): #ctx i-e context is a must parameter for any command function. It holds data such as the channel and the guild that the user called the command from
     response = f'Hello {ctx.author.name}, welcome to {GUILD}'
     await ctx.send(response)
 
+##### ADMIN  COMMANDS #####
 @bot.command(name='create_channel', help = 'Allows creating channels in the server for admin')
 @commands.has_role('admin')
 async def create_channel(ctx, channel_type='text', channel_name=f'New-channel{random.randint(1,1000)}'):
@@ -118,21 +125,7 @@ async def create_channel(ctx, channel_type='text', channel_name=f'New-channel{ra
     else:
         await ctx.send(f'{channel_name} already exists.\nTry creating another channel') 
 
-@bot.command(name='99', help='Responds with a random quote from Brooklyn 99')
-async def nine_nine(ctx):
-    brooklyn_99_quotes = [
-        'I\'m the human form of the 💯 emoji.',
-        'Bingpot!',
-        (
-            'Cool. Cool cool cool cool cool cool cool, '
-            'no doubt no doubt no doubt no doubt.'
-        ),
-    ]
-
-    response = random.choice(brooklyn_99_quotes)
-    await ctx.send(response)
-
-
+###### GENERAL COMMANDS #####
 @bot.command(name='roll_dice', help='Simulates rolling dice. e.g. !roll_dice 2 6 will simulate 2 dices with 6 sides')
 async def roll(ctx, number_of_dice= 1, number_of_sides= 6):
     dice = [
@@ -152,18 +145,35 @@ async def flip(ctx, number_of_coins=1):
 
 @bot.command(name='joke', help='Gets you a joke')
 async def tell_joke(ctx):
-    joke = joke_api.get_joke()
+    joke =  joke_api.get_joke()
 
     if joke == False:
         await ctx.send('Sorry due to some technical problem I couldn\'t get a joke for you. Please try again')
     else:
         await ctx.send(joke['setup'] + '\n' + joke['punchline'])    
 
-@bot.command(name = 'ping')
-async def ping(ctx):
-    await ctx.send('Pong!')
+@bot.command(name='quote', help='Gets you a random quote')
+async def tell_quote(ctx):
+    quote =  quotes_api.get_quote()
 
-@bot.command(name="echo")
+    if quote == False:
+        await ctx.send('Sorry due to some technical problem I couldn\'t get a quote for you. Please try again')
+    else:
+        await ctx.send(quote['text'] + '\n -' + quote['author'])
+
+
+@bot.command(name = 'ping', help='provides ping statistics for given website')
+async def ping(ctx, website_url="discord.com"):
+    ping_stats = check_ping.checkPing(website_url)
+    #print(ping_stats["packet_transmit"])
+    if ping_stats == False: 
+        await ctx.send('Sorry due to some technical issue, I cannot fetch ping statistics. Please Try again')
+    else:
+        await ctx.send(f'Pong!\n Ping details for "{website_url}" :\n Packets transmitted : {ping_stats["packet_transmit"]} \n Packets Received : {ping_stats["packet_receive"]}\n Packet Loss : {ping_stats["packet_loss_count"]}%\n Packet Loss Rate : {ping_stats["packet_loss_rate"]}\n rtt min/avg/max/mdev = {ping_stats["rtt_min"]}/{ping_stats["rtt_avg"]}/{ping_stats["rtt_max"]}/{ping_stats["rtt_mdev"]}\n')
+
+
+
+@bot.command(name="echo", help="will just echo/print")
 async def echo(ctx, *, arg):
     await ctx.send(arg)
     #eqvt code
@@ -175,6 +185,34 @@ async def echo(ctx, *, arg):
     #     await ctx.send(output)    
     #     await bot.say(output)  
 
+@bot.command(name="time", help="gives current time")
+async def get_time(ctx,timezone="Asia/Kathmandu"):
+    inputTimeZone = pytz.timezone(timezone)
+    now = datetime.now(inputTimeZone)
+    current_time = now.strftime("%H:%M:%S")
+    await ctx.send(f"Current time : {current_time}")
 
+@bot.command(name="date", help="gives current date")
+async def get_date(ctx):
+    today = date.today()
+    today_date = today.strftime("%B %d %Y")
+    await ctx.send(f"Today is {today_date}")
+
+@bot.command(aliases=['bye','goodbye','getout'], help="says goodbye")
+async def say_bye(ctx):
+    response = f"Good bye {ctx.author.name}. See you later"
+    await ctx.send(response)
+
+@bot.command(name="weather", help="gives the weather for given location. Default: Kathmandu")
+async def tell_weather(ctx, city="Kathmandu"):
+    weather_data = weather_api.get_weather(city)
+    weather_details = weather_data['main']
+    weather_report = weather_data['weather']
+    print(weather_details)
+    if weather_details == False:
+        await ctx.send('Sorry due to some technical problem I couldn\'t get weather info for you. Please try again')
+    else:
+        response = f'Weather Report for {city} :\n Weather Condition: {weather_report[0]["description"]}\n Temperature : {weather_details["temp"]}\n Humidity: {weather_details["humidity"]}\n Pressure: {weather_details["pressure"]}\n'
+        await ctx.send(response)
 
 bot.run(TOKEN)     
