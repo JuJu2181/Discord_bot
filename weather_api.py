@@ -1,5 +1,6 @@
 import requests
 import json
+import time
 
 API_KEY = "40a9f65a9c29080b22a837ba05cbff0f"
 def check_valid_status_code(request):  # to check if the status code from api is valid or not
@@ -15,7 +16,11 @@ def get_weather(city_name):
     return data
 
 # weather_data = get_weather('Kathmandu')
-# print(weather_data)
+# print(weather_data['sys'])
+# sunrise = weather_data['sys']['sunrise']
+# sunset = weather_data['sys']['sunset'] 
+# risingtTimeObj = time.localtime(sunrise)
+# print(f'Sun rose today in {risingtTimeObj.tm_hour}:{risingtTimeObj.tm_min}:{risingtTimeObj.tm_sec}')
 # print(type(weather_data))
 
 
