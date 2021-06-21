@@ -10,11 +10,15 @@ import time
 import pytz
 import youtube_dl
 import asyncio
+import praw
+import threading
 
 import joke_api
 import quotes_api
 import check_ping
 import weather_api
+import reddit_file
+#import memes_api
 
 #1
 from discord.ext import commands, tasks
@@ -36,16 +40,21 @@ ytdl_format_options = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+    'source_address': '0.0.0.0', # bind to ipv4 since ipv6 addresses cause issues sometimes
+    'forceduration': True 
 }
 
 ffmpeg_options = {
     'options': '-vn'
 }
-
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+#to get duration of yt video
+# dictmeta = ytdl.extract_info("https://www.youtube.com/watch?v=FSUHeqhVvpc")
+# print(dictmeta['duration'])
 
+videoDuration = 0
 class YTDLSource(discord.PCMVolumeTransformer):
+    
     def __init__(self, source, *, data, volume=0.5):
         super().__init__(source, volume)
 
@@ -56,18 +65,24 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False):
+        global videoDuration
         loop = loop or asyncio.get_event_loop()
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
-
+        
         if 'entries' in data:
             # take first item from a playlist
             data = data['entries'][0]
-
+        videoDuration = data['duration']
         filename = data['url'] if stream else ytdl.prepare_filename(data)
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+
+#print(videoDuration)
 ## load env
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
+REDDIT_APP_ID = 'ev455l_XxV7R5g'
+REDDIT_APP_SECRET = 's9Tz42N_AAPe0I0zawhSR7Mbio3TQQ'
+REDDIT_MEME = ['funny','meme','wtf']
 #GUILD = os.getenv('DISCORD_GUILD')
 
 #TOKEN = 'NzMyOTgxMzAzMTYyNDM3NzMz.XxVpYQ.SanIqXTlntglEgRG0_vtauLXG58'
@@ -83,7 +98,7 @@ status = ['your favorite music', 'Fifa', 'Clash Royale']
 @bot.event
 async def on_ready():
     change_status.start()
-    print(f'{bot.user.name} bot has connected to Discord!')
+    print(f'**{bot.user.name} is now online**')
     # Here get() takes the iterable and some keyword arguments. The keyword arguments represent attributes of the elements in the iterable that must all be satisfied for get() to return statement
     # here name = GUILD is that required attribute
     #guild = discord.utils.get(bot.guilds, name = GUILD)
@@ -96,10 +111,6 @@ async def on_ready():
     #Changing the presence of the bot
     #await bot.change_presence(activity = discord.Activity(type = discord.ActivityType.playing, name = 'Fifa'))
 
-@tasks.loop(seconds=20)
-async def change_status():
-    #Changing the presence of the bot
-    await bot.change_presence(activity = discord.Game(choice(status)))
 
 
 @bot.event
@@ -164,23 +175,23 @@ async def on_message_delete(message):
 
 #commands for guild
 ##### Default welcome command ####
-@bot.command(aliases=['hello','hi','namaste','hey'], help='Welcomes you to the server')
+@bot.command(aliases=['hello','hi','namaste','hey'], help='\nWelcomes you to the server')
 async def say_hello(ctx): #ctx i-e context is a must parameter for any command function. It holds data such as the channel and the guild that the user called the command from
     response = f'Hello {ctx.author.name}, How are you?'
     await ctx.send(response)
 
-@bot.command(name="die", help="returns random last words")
+@bot.command(name="die", help="\nreturns random last words")
 async def die(ctx):
     responses = ['Why have you brought my short life to end', 'Noooooo', 'I could have done so much']
     await ctx.send(choice(responses))
 
-@bot.command(name="credits", help="Credits to Developer")
+@bot.command(name="credits", help="\nCredits to Developer")
 async def credits(ctx):
     await ctx.send('Developed By: `Anish Shilpakar`')
     await ctx.send('Thanks for using us')
 
 ##### ADMIN  COMMANDS #####
-@bot.command(name='create_channel', help = 'Allows creating channels in the server for admin')
+@bot.command(name='create_channel', help='\nAllows creating channels in the server for admin')
 @commands.has_role('admin')
 async def create_channel(ctx, channel_type='text', channel_name=f'New-channel{random.randint(1,1000)}'):
     guild = ctx.guild
@@ -201,7 +212,7 @@ async def create_channel(ctx, channel_type='text', channel_name=f'New-channel{ra
     else:
         await ctx.send(f'{channel_name} already exists.\nTry creating another channel') 
 
-@bot.command(name='users', help='show all members')
+@bot.command(name='users', help='\nshow all members')
 async def show_user(ctx):
     print(ctx.channel)
     if str(ctx.channel) in channels:
@@ -212,7 +223,7 @@ async def show_user(ctx):
     
 
 ###### GENERAL COMMANDS #####
-@bot.command(name='roll_dice', help='Simulates rolling dice. e.g. !roll_dice 2 6 will simulate 2 dices with 6 sides')
+@bot.command(name='roll_dice', help='\nSimulates rolling dice. e.g. !roll_dice 2 6 will simulate 2 dices with 6 sides')
 async def roll(ctx, number_of_dice= 1, number_of_sides= 6):
     dice = [
         str(random.choice(range(1, number_of_sides + 1)))
@@ -220,7 +231,7 @@ async def roll(ctx, number_of_dice= 1, number_of_sides= 6):
     ]
     await ctx.send(', '.join(dice)) #join() returns a string in which the elemnts of a sequence have been seperated by string seperator
 
-@bot.command(name='flip_coin', help='Simulates flipping a coin. e.g. !flip_coin 2 will simulate flipping 2 coins')
+@bot.command(name='flip_coin', help='\nSimulates flipping a coin. e.g. !flip_coin 2 will simulate flipping 2 coins')
 async def flip(ctx, number_of_coins=1):
     coin_sides = ['Heads', 'Tails']
     coin = [
@@ -229,7 +240,7 @@ async def flip(ctx, number_of_coins=1):
     ]
     await ctx.send(', '.join(coin))
 
-@bot.command(name='joke', help='Gets you a joke')
+@bot.command(name='joke', help='\nGets you a joke')
 async def tell_joke(ctx):
     joke =  joke_api.get_joke()
 
@@ -238,7 +249,7 @@ async def tell_joke(ctx):
     else:
         await ctx.send(joke['setup'] + '\n' + joke['punchline'])    
 
-@bot.command(name='quote', help='Gets you a random quote')
+@bot.command(name='quote', help='\nGets you a random quote')
 async def tell_quote(ctx):
     quote =  quotes_api.get_quote()
 
@@ -248,7 +259,7 @@ async def tell_quote(ctx):
         await ctx.send(quote['text'] + '\n -' + quote['author'])
 
 
-@bot.command(name = 'ping_web', help='provides ping statistics for given website')
+@bot.command(name = 'ping_web', help='\nprovides ping statistics for given website')
 async def getPing(ctx, website_url="discord.com"):
     ping_stats = check_ping.checkPing(website_url)
     #print(ping_stats["packet_transmit"])
@@ -257,11 +268,11 @@ async def getPing(ctx, website_url="discord.com"):
     else:
         await ctx.send(f'Pong!\n Ping details for "{website_url}" :\n Packets transmitted : {ping_stats["packet_transmit"]} \n Packets Received : {ping_stats["packet_receive"]}\n Packet Loss : {ping_stats["packet_loss_count"]}%\n Packet Loss Rate : {ping_stats["packet_loss_rate"]}\n rtt min/avg/max/mdev = {ping_stats["rtt_min"]}/{ping_stats["rtt_avg"]}/{ping_stats["rtt_max"]}/{ping_stats["rtt_mdev"]}\n')
 
-@bot.command(name='ping', help="returns latency ")
+@bot.command(name='ping', help="\nreturns latency ")
 async def ping(ctx):
     await ctx.send(f'**Pong!**\n Latency : {round(bot.latency *1000)} ms')
 
-@bot.command(name="echo", help="will just echo/print")
+@bot.command(name="echo", help="\nwill just echo/print")
 async def echo(ctx, *, arg):
     await ctx.send(arg)
     #eqvt code
@@ -273,25 +284,25 @@ async def echo(ctx, *, arg):
     #     await ctx.send(output)    
     #     await bot.say(output)  
 
-@bot.command(name="time", help="gives current time")
+@bot.command(name="time", help="\ngives current time")
 async def get_time(ctx,timezone="Asia/Kathmandu"):
     inputTimeZone = pytz.timezone(timezone)
     now = datetime.now(inputTimeZone)
     current_time = now.strftime("%H:%M:%S")
     await ctx.send(f"Current time : {current_time}")
 
-@bot.command(name="date", help="gives current date")
+@bot.command(name="date", help="\ngives current date")
 async def get_date(ctx):
     today = date.today()
     today_date = today.strftime("%B %d %Y")
     await ctx.send(f"Today is {today_date}")
 
-@bot.command(aliases=['bye','goodbye','getout'], help="says goodbye")
+@bot.command(aliases=['bye','goodbye','getout'], help="\nsays goodbye")
 async def say_bye(ctx):
     response = f"Good bye {ctx.author.name}. See you later"
     await ctx.send(response)
 
-@bot.command(name="weather", help="gives the weather for given location. Default: Kathmandu")
+@bot.command(name="weather", help="\ngives the weather for given location. Default: Kathmandu")
 async def tell_weather(ctx, city="Kathmandu"):
     weather_data = weather_api.get_weather(city)
     if weather_data == False:
@@ -304,7 +315,7 @@ async def tell_weather(ctx, city="Kathmandu"):
         response = f'Weather Report for {city} :\n Weather Condition: {weather_report[0]["description"]}\n Temperature : {temperatureInCelsius} C \n Humidity: {weather_details["humidity"]} % \n Pressure: {weather_details["pressure"]} atm\n'
         await ctx.send(response)
 
-@bot.command(name="sun", help="give details about sunrise and sunset")
+@bot.command(name="sun", help="\ngive details about sunrise and sunset")
 async def tell_sunDetails(ctx, city="Kathmandu"):
     sun_data = weather_api.get_weather(city)
     if sun_data == False:
@@ -318,28 +329,231 @@ async def tell_sunDetails(ctx, city="Kathmandu"):
         #print(sunset.tm_min)
         await ctx.send(f"Sun Details For {city}\n Sunrise in : {sunrise.tm_hour}:{sunrise.tm_min}:{sunrise.tm_sec}\n Sunset in : {sunset.tm_hour}:{sunset.tm_min}:{sunset.tm_sec}")
 
+#to get random memes
+#tried using an api but it was meme generator api
+#same command can be used to get random images from an api
+# @bot.command(name="meme", help="\nGets you a random meme")
+# async def get_meme(ctx):
+#     meme_data = memes_api.random_meme()
+#     meme_url = meme_data["image_url"]
+#     if not meme_data:
+#         await ctx.send("Sorry Due to Technical Problem, I can't get you meme")
+#     else:
+#         await ctx.send(f'Here is a meme for you \n {meme_url}')
+
+# I will try to get memes from reddit using praw(python reddit app wrapper)
+reddit = praw.Reddit(client_id=REDDIT_APP_ID, client_secret=REDDIT_APP_SECRET, user_agent="first_discord_bot:%s:1.0" % REDDIT_APP_ID)
+@bot.command(name="meme", help="gets you a random meme")
+async def get_meme(ctx, str="memes"):
+    async with ctx.channel.typing():
+        try:
+            meme_data = reddit_file.randomMeme(str)
+            if not meme_data:
+               await ctx.send("Technical issue")
+            else:
+                await ctx.send(f'Here is a meme for you\n{meme_data}')        
+        except Exception as e:
+            print(f'Error: \n{e}')
+            await ctx.send(f'No memes were found for {str}')
+
 ###to play music ###
-@bot.command(name='play', help='This command plays a song')
-async def play(ctx,url):
+isConnected = False
+@bot.command(name='join_channel',help='\nThe bot joins a voice channel in which user is in')
+async def join_channel(ctx):
+    global isConnected
+    print('join caled')
     if not ctx.message.author.voice:
-        await ctx.send('You are not connected to a voice channel')
+        await ctx.send('You are not connected to a voice channel!!! Join a channel ')
+        return
     else:
         channel = ctx.message.author.voice.channel
-    await channel.connect() 
+        print(channel)
+    await channel.connect()
+    isConnected = True
+    print('Channel Joined success')
 
+@bot.command(name='leave_channel', help="\nbot will leave the voice channel")
+async def leave_channel(ctx):
+    voice_client = ctx.message.guild.voice_client
+    if isConnected:
+        await voice_client.disconnect()
+    else:
+        await ctx.send('Bot hasn\'t joined any channel yet')
+
+#queue_of_songs for songs
+queue_of_songs = []
+isPlayingFromQueue = False
+isPlaying = False
+currentSong = ""
+startingTime = 0.0
+#print(len(queue_of_songs))
+@bot.command(name="view_queue", help="\nShows the queue_of_songs")
+async def view_queue(ctx):
+    global queue_of_songs
+    print(queue_of_songs)
+    if len(queue_of_songs) != 0:
+        i = 1
+        await ctx.send('**Queue_of_songs of Songs : **\n')
+        for song in queue_of_songs:
+            await ctx.send(f'{i}. {song}')
+            i+=1
+        print(queue_of_songs)
+    else:
+        await ctx.send('There is nothing in queue_of_songs')
+        print(queue_of_songs)
+        return
+
+@bot.command(name="queue", help="\nAdds the song to queue_of_songs")
+async def queue(ctx, url=''):
+    global queue_of_songs
+    if len(url) != 0: 
+        queue_of_songs.append(url)
+        await ctx.send(f'{url} has succesully been added to queue_of_songs')
+        await view_queue(ctx) 
+    else:
+        await ctx.send('Enter the song to add to queue')
+        return
+
+@bot.command(name="remove_song", help="\nRemoves the song from the queue_of_songs")
+async def remove_song(ctx, url=''):
+    global queue_of_songs
+    try:
+        if(len(url) != 0):
+            if len(queue_of_songs)!=0:
+                if url in queue_of_songs:
+                    queue_of_songs.remove(url)
+                    await ctx.send(f'{url} has succesfully been removed from queue_of_songs')
+                    await view_queue(ctx)
+                else:
+                    await ctx.send(f'{url} was not found in queue_of_songs to remove')    
+            else:
+                await ctx.send('The queue_of_songs is empty') 
+        else:
+            await ctx.send('No song was provided to remove')
+            return
+    except:
+        await ctx.send('Error while removing element from queue_of_songs')
+
+
+@bot.command(name='play', help='\nThis command plays a song')
+async def play(ctx, url=''):
+    global isConnected,isPlaying,startingTime
+    if not isConnected:
+        #await ctx.send('Bot is not connected to a voice channel!!! Join a channel ')
+        await join_channel(ctx)
+        #return
+    #await join_channel(ctx)
+    print('Join success')
+    global queue_of_songs,isPlayingFromQueue,currentSong
     server = ctx.message.guild
     voice_channel = server.voice_client
+    if isPlaying == False:
+        if (len(url) != 0):
+            song_url = url
+            print('Playing entered song')
+        else:
+            if len(queue_of_songs) != 0:
+                song_url = queue_of_songs[0]
+                await ctx.send('Now playing from queue')
+                isPlayingFromQueue = True
+                print('playing from queue')
+            else:
+                await ctx.send('No song in the queue please add songs before trying')
+                return
+        print(f'Song is {song_url}')
+    
+        async with ctx.typing():
+            player = await YTDLSource.from_url(song_url , loop = bot.loop)
+            print(player)
+            await ctx.send(f'**Now Playing:** {player.title}')
+            voice_channel.play(player, after=lambda e: print('Player Error: %s' % e) if e else None)
+            #startingTime = time.perf_counter()
+        
+        currentSong = player.title
+        isPlaying = True
+        print(f'Video Duration: {videoDuration}')
 
-    async with ctx.typing():
-        player = await YTDLSource.from_url(url,loop = bot.loop)
-        voice_channel.play(player, after=lambda e: print('Player Error: %s' % e) if e else None)
+    print(1)
+    if isPlayingFromQueue:
+        del queue_of_songs[0]
+        print(2)
+    if len(queue_of_songs) != 0:    
+        print(3)
+        # endTime = time.perf_counter()
+        # while ((startingTime + videoDuration) > endTime):
+        #     if (startingTime + videoDuration) < endTime:
+        #         break
+        #     else:
+        #         continue
+        startingTime = threading.Timer(10,playInQueue(ctx))          
+        await ctx.send('Now playing from queue after this song')
+        #await skip(ctx)
+        startingTime.start()
+        print('4')
+        
+def playInQueue(ctx):
+    print("palying from queue now")
+    asyncio.create_task(skip(ctx))
 
-    await ctx.send(f'**Now Playing:** {player.title}') 
-
-
-@bot.command(name='stop', help="stops the song")
+@bot.command(name='stop', help='\nStop the playing song')
 async def stop(ctx):
-    voice_client = ctx.message.guild.voice_client
-    await voice_client.disconnect()
+    global queue_of_songs,isPlaying
+    server = ctx.message.guild
+    voice_channel = server.voice_client
+    if isPlaying:
+        voice_channel.stop()
+        await ctx.send(f'The Song has been stopped')
+        isPlaying = False
+    else:
+        await ctx.send('No song is being played yet')    
+    
+@bot.command(name='pause', help='\nPauses the playing song')
+async def pause(ctx):
+    global queue_of_songs,isPlaying
+    server = ctx.message.guild
+    voice_channel = server.voice_client
+    if isPlaying:
+        voice_channel.pause()
+        await ctx.send(f'song has succesfully been Paused')
+        isPlaying = False
+    else:
+        await ctx.send('No song is being played')
+
+@bot.command(name='resume', help='\nResumes playing song')
+async def resume(ctx):
+    global queue_of_songs,isPlaying
+    server = ctx.message.guild
+    voice_channel = server.voice_client
+    if not isPlaying:
+        voice_channel.resume()
+        await ctx.send(f'Resuming the song')
+        isPlaying = True
+
+@bot.command(name='skip', help="\nSkips the song in the queue")
+async def skip(ctx):
+    global queue_of_songs, isPlayingFromQueue
+    server = ctx.message.guild
+    voice_channel = server.voice_client
+    voice_channel.stop()
+    print('in skip')
+    if len(queue_of_songs) != 0:
+        print('in skip')
+        if isPlayingFromQueue:
+            await ctx.send('Playing Next Song:\n')
+            await play(ctx)
+        else:
+            await ctx.send('Playing from queue now:\n')
+            await play(ctx)    
+    else:
+        await ctx.send('The Queue is empty !!! Please Add songs before skipping')
+    
+#changing the bot status
+@tasks.loop(seconds=30)
+async def change_status():
+    #Changing the presence of the bot
+    if currentSong == "":
+        await bot.change_presence(activity = discord.Game(choice(status)))
+    else:
+        await bot.change_presence(activity = discord.Game(currentSong))
 
 bot.run(TOKEN)     
