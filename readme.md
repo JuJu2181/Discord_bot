@@ -1,5 +1,5 @@
 # Discord Bot
-This is a simple discord bot made with python using discord.py
+This is a simple discord bot made with python using discord.py when I was learning python
 In development phase
 ## Available Features
 - Check Ping Status 
